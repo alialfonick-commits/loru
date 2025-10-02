@@ -27,8 +27,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Ignored non-video event" }, { status: 200 });
     }
 
-    const { videoName } = body.data;
-
+    const { videoName, id} = body.data;
+    console.log(id)
     // Build direct file URL (MP4 version)
     const fileUrl = `${ADDPIPE_BUCKET_BASE}/${videoName}.mp4`;
     console.log("Downloading from:", fileUrl);
@@ -52,17 +52,25 @@ export async function POST(req: NextRequest) {
 
     // 3. (Optional) Delete from AddPipe
     try {
-      const deleteUrl = `https://api.addpipe.com/delete/${videoName}?apiKey=${process.env.ADDPIPE_API_KEY}`;
-      const deleteRes = await fetch(deleteUrl, { method: "DELETE" });
-
+      const deleteUrl = `https://api.addpipe.com/video/${id}`;
+    
+      const deleteRes = await fetch(deleteUrl, {
+        method: "DELETE",
+        headers: {
+          "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY || ""
+        }
+      });
+    
       if (!deleteRes.ok) {
-        console.warn(`⚠️ Failed to delete video ${videoName} from AddPipe`);
+        const errorText = await deleteRes.text();
+        console.warn(`⚠️ Failed to delete video ${videoName} from AddPipe:`, errorText);
       } else {
         console.log(`🗑️ Deleted video ${videoName} from AddPipe`);
       }
     } catch (err) {
       console.error("Error deleting video from AddPipe:", err);
     }
+    
 
     return NextResponse.json({ success: true, s3Key: key }, { status: 200 });
   } catch (error) {
