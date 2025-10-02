@@ -2,49 +2,79 @@ import { NextRequest, NextResponse } from "next/server";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { s3 } from "@/lib/s3";
 
-// 👇 define the payload shape (adjust fields based on AddPipe docs)
-interface AddPipeWebhookPayload {
-  code: string; // unique video code
-  videoStatus: string; // e.g., "ready"
-  assets: {
-    mp4: string; // direct URL to mp4 file
+interface AddPipeWebhook {
+  version: string;
+  event: string; // "video_recorded"
+  data: {
+    videoName: string;
+    type: string; // "webm" | "mp4"
+    payload: string; // file path + ?key
+    id: number;
+    httpReferer: string;
+    [key: string]: any;
   };
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const data: AddPipeWebhookPayload = await req.json();
-    console.log("Webhook payload:", data);
+    const body: AddPipeWebhook = await req.json();
+    console.log("Webhook received:", JSON.stringify(body, null, 2));
 
-    if (data.videoStatus !== "ready") {
-      return NextResponse.json({ message: "audio not ready yet" }, { status: 200 });
+    if (body.event !== "video_recorded") {
+      return NextResponse.json(
+        { message: "Ignored non-video event" },
+        { status: 200 }
+      );
     }
 
-    // 1. Download video from AddPipe
-    const response = await fetch(data.assets.mp4);
-    if (!response.ok) throw new Error("Failed to download audio");
+    const { videoName, type, payload } = body.data;
+
+    // 🔑 Extract AddPipe download URL from payload
+    // Payload format: "projectId,filePath%3Fkey%3D<token>,"
+    const parts = payload.split(",");
+    if (parts.length < 2) throw new Error("Unexpected AddPipe payload format");
+
+    const filePath = decodeURIComponent(parts[1]); // hWN2jR4xnwvSlgvBFk4bzqDb?key=...
+    const fileUrl = `https://cdn.addpipe.com/${filePath}`;
+    console.log("Downloading from:", fileUrl);
+
+    // 1. Download file
+    const response = await fetch(fileUrl);
+    if (!response.ok) throw new Error("Failed to download file from AddPipe");
     const buffer = Buffer.from(await response.arrayBuffer());
 
     // 2. Upload to S3
-    const key = `audio/${data.code}.mp4`;
+    const key = `audio/${videoName}.${type}`;
     await s3.send(
       new PutObjectCommand({
         Bucket: process.env.AWS_BUCKET_NAME!,
         Key: key,
         Body: buffer,
-        ContentType: "video/mp4",
+        ContentType: type === "webm" ? "audio/webm" : "video/mp4",
       })
     );
+    console.log(`✅ Uploaded to S3: ${key}`);
 
-    console.log(`Uploaded to S3: ${key}`);
+    // 3. (Optional) Delete from AddPipe
+    try {
+      const deleteUrl = `https://api.addpipe.com/delete/${videoName}?apiKey=${process.env.ADDPIPE_API_KEY}`;
+      const deleteRes = await fetch(deleteUrl, { method: "DELETE" });
 
-    // 3. (Optional) Delete video from AddPipe
-    // -> requires AddPipe API call with your project credentials
-    await fetch(`https://api.addpipe.com/delete/${data.code}?apiKey=${process.env.ADDPIPE_API_KEY}`, { method: "DELETE" });
+      if (!deleteRes.ok) {
+        console.warn(`⚠️ Failed to delete video ${videoName} from AddPipe`);
+      } else {
+        console.log(`🗑️ Deleted video ${videoName} from AddPipe`);
+      }
+    } catch (err) {
+      console.error("Error deleting video from AddPipe:", err);
+    }
 
     return NextResponse.json({ success: true, s3Key: key }, { status: 200 });
   } catch (error) {
     console.error("Webhook error:", error);
-    return NextResponse.json({ error: "Failed to process webhook" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to process webhook" },
+      { status: 500 }
+    );
   }
 }
