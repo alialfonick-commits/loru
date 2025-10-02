@@ -15,44 +15,39 @@ interface AddPipeWebhook {
   };
 }
 
+const ADDPIPE_BUCKET_BASE =
+  "https://eu2-addpipe.s3.nl-ams.scw.cloud/c74db05954f730433e3ad3051414f983";
+
 export async function POST(req: NextRequest) {
   try {
     const body: AddPipeWebhook = await req.json();
     console.log("Webhook received:", JSON.stringify(body, null, 2));
 
-    if (body.event !== "video_recorded") {
-      return NextResponse.json(
-        { message: "Ignored non-video event" },
-        { status: 200 }
-      );
+    if (body.event !== "video_recorded" && body.event !== "video_converted") {
+      return NextResponse.json({ message: "Ignored non-video event" }, { status: 200 });
     }
 
-    const { videoName, type, payload } = body.data;
+    const { videoName } = body.data;
 
-    // 🔑 Extract AddPipe download URL from payload
-    // Payload format: "projectId,filePath%3Fkey%3D<token>,"
-    const parts = payload.split(",");
-    if (parts.length < 2) throw new Error("Unexpected AddPipe payload format");
-
-    const filePath = decodeURIComponent(parts[1]); // hWN2jR4xnwvSlgvBFk4bzqDb?key=...
-    const fileUrl = `https://cdn.addpipe.com/${filePath}`;
+    // Build direct file URL (MP4 version)
+    const fileUrl = `${ADDPIPE_BUCKET_BASE}/${videoName}.mp4`;
     console.log("Downloading from:", fileUrl);
 
-    // 1. Download file
     const response = await fetch(fileUrl);
-    if (!response.ok) throw new Error("Failed to download file from AddPipe");
+    if (!response.ok) throw new Error(`Failed to download file: ${response.status}`);
     const buffer = Buffer.from(await response.arrayBuffer());
 
-    // 2. Upload to S3
-    const key = `audio/${videoName}.${type}`;
+    // Upload to your own S3
+    const key = `audio/${videoName}.mp4`;
     await s3.send(
       new PutObjectCommand({
         Bucket: process.env.AWS_BUCKET_NAME!,
         Key: key,
         Body: buffer,
-        ContentType: type === "webm" ? "audio/webm" : "video/mp4",
+        ContentType: "video/mp4",
       })
     );
+
     console.log(`✅ Uploaded to S3: ${key}`);
 
     // 3. (Optional) Delete from AddPipe
