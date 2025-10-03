@@ -102,6 +102,8 @@ export async function POST(req: NextRequest) {
 
     console.log(`✅ QR Code generated for: ${uploadedfileUrl}`);
 
+    console.log('QR code:', qrCodeDataUrl)
+
     // 4. Delete video from AddPipe
     try {
       const deleteRes = await fetch(`https://api.addpipe.com/video/${id}`, {
