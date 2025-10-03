@@ -5,19 +5,45 @@ import QRCode from "qrcode";
 
 interface AddPipeWebhook {
   version: string;
-  event: string; // "video_recorded"
+  event: string; // "video_recorded" | "video_converted"
   data: {
     videoName: string;
     type: string; // "webm" | "mp4"
-    payload: string; // file path + ?key
+    payload: string;
     id: number;
     httpReferer: string;
     [key: string]: any;
   };
 }
 
-// const ADDPIPE_BUCKET_BASE =
-//   "https://eu2-addpipe.s3.nl-ams.scw.cloud/c74db05954f730433e3ad3051414f983";
+// --- Helper: Retry download with exponential backoff ---
+async function downloadWithRetry(
+  url: string,
+  retries = 5,
+  delay = 2000 // start with 2s
+): Promise<Buffer> {
+  for (let i = 0; i < retries; i++) {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "*/*",
+      },
+    });
+
+    if (res.ok) {
+      return Buffer.from(await res.arrayBuffer());
+    }
+
+    console.warn(`⚠️ Download attempt ${i + 1} failed (${res.status})`);
+
+    if (i < retries - 1) {
+      const wait = delay * Math.pow(2, i); // exponential backoff
+      console.log(`⏳ Retrying in ${wait / 1000}s...`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw new Error(`Failed to download after ${retries} attempts`);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,7 +56,7 @@ export async function POST(req: NextRequest) {
 
     const { videoName, id, type } = body.data;
 
-    // 1. Call AddPipe API to get the real file URL
+    // 1. Get video info from AddPipe
     const videoRes = await fetch(`https://api.addpipe.com/video/${id}`, {
       headers: {
         "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY!,
@@ -42,35 +68,21 @@ export async function POST(req: NextRequest) {
     }
 
     const videoData = await videoRes.json();
-    let pipeS3Link: string  = videoData?.videos?.[0]?.pipeS3Link;
-    console.log("Video Data", videoData)
-    console.log("Pipe Link", pipeS3Link)
+    let pipeS3Link: string = videoData?.videos?.[0]?.pipeS3Link;
 
-    if (!pipeS3Link) {
-      throw new Error("No pipeS3Link found in AddPipe response");
-    }
+    if (!pipeS3Link) throw new Error("No pipeS3Link found in AddPipe response");
 
     // Normalize link
     if (pipeS3Link.startsWith("/")) {
       pipeS3Link = `eu2-addpipe.s3.nl-ams.scw.cloud${pipeS3Link}`;
     }
-
     const fileUrl = `https://${pipeS3Link}`;
     console.log("Downloading from:", fileUrl);
 
-    // 2. Download the actual file
-    const response = await fetch(fileUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "*/*",
-      },
-    });
+    // 2. Download file with retry
+    const buffer = await downloadWithRetry(fileUrl);
 
-    if (!response.ok) throw new Error(`Failed to download file: ${response.status}`);
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-
-    // 3. Upload to your own S3
+    // 3. Upload to S3
     const ext = type || "mp4";
     const key = `audio/${videoName}.${ext}`;
 
@@ -86,32 +98,27 @@ export async function POST(req: NextRequest) {
     console.log(`✅ Uploaded to S3: ${key}`);
 
     const uploadedfileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+    const qrCodeDataUrl = await QRCode.toDataURL(uploadedfileUrl);
 
-    const qrCodeDataUrl = await QRCode.toDataURL(uploadedfileUrl); 
+    console.log(`✅ QR Code generated for: ${uploadedfileUrl}`);
 
-    console.log(`✅ QR Code generated for: ${fileUrl}`);
-
-    // 3. (Optional) Delete from AddPipe
+    // 4. Delete video from AddPipe
     try {
-      const deleteUrl = `https://api.addpipe.com/video/${id}`;
-    
-      const deleteRes = await fetch(deleteUrl, {
+      const deleteRes = await fetch(`https://api.addpipe.com/video/${id}`, {
         method: "DELETE",
         headers: {
-          "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY || ""
-        }
+          "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY || "",
+        },
       });
-    
+
       if (!deleteRes.ok) {
-        const errorText = await deleteRes.text();
-        console.warn(`⚠️ Failed to delete video ${videoName} from AddPipe:`, errorText);
+        console.warn(`⚠️ Failed to delete video ${videoName} from AddPipe`);
       } else {
         console.log(`🗑️ Deleted video ${videoName} from AddPipe`);
       }
     } catch (err) {
       console.error("Error deleting video from AddPipe:", err);
     }
-    
 
     return NextResponse.json(
       { success: true, s3Key: key, qrCode: qrCodeDataUrl },
@@ -119,9 +126,6 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     console.error("Webhook error:", error);
-    return NextResponse.json(
-      { error: "Failed to process webhook" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to process webhook" }, { status: 500 });
   }
 }
