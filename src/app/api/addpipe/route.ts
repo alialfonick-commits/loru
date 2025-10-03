@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
 
     const videoData = await videoRes.json();
     const pipeS3Link = videoData?.videos?.[0]?.pipeS3Link;
+    console.log("Video Data", videoData)
+    console.log("Pipe Link", pipeS3Link)
 
     if (!pipeS3Link) {
       throw new Error("No pipeS3Link found in AddPipe response");
