@@ -33,8 +33,15 @@ export async function POST(req: NextRequest) {
     const fileUrl = `${ADDPIPE_BUCKET_BASE}/${videoName}.mp4`;
     console.log("Downloading from:", fileUrl);
 
-    const response = await fetch(fileUrl);
+    const response = await fetch(fileUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "*/*",
+      },
+    });
+
     if (!response.ok) throw new Error(`Failed to download file: ${response.status}`);
+
     const buffer = Buffer.from(await response.arrayBuffer());
 
     // Upload to your own S3
