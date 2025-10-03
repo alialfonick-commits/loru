@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { s3 } from "@/lib/s3";
+import QRCode from "qrcode";
 
 interface AddPipeWebhook {
   version: string;
@@ -15,8 +16,8 @@ interface AddPipeWebhook {
   };
 }
 
-const ADDPIPE_BUCKET_BASE =
-  "https://eu2-addpipe.s3.nl-ams.scw.cloud/c74db05954f730433e3ad3051414f983";
+// const ADDPIPE_BUCKET_BASE =
+//   "https://eu2-addpipe.s3.nl-ams.scw.cloud/c74db05954f730433e3ad3051414f983";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,12 +28,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Ignored non-video event" }, { status: 200 });
     }
 
-    const { videoName, id} = body.data;
-    console.log(id)
-    // Build direct file URL (MP4 version)
-    const fileUrl = `${ADDPIPE_BUCKET_BASE}/${videoName}.mp4`;
+    const { videoName, id, type } = body.data;
+
+    // 1. Call AddPipe API to get the real file URL
+    const videoRes = await fetch(`https://api.addpipe.com/video/${id}`, {
+      headers: {
+        "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY!,
+      },
+    });
+
+    if (!videoRes.ok) {
+      throw new Error(`Failed to fetch video info from AddPipe: ${videoRes.status}`);
+    }
+
+    const videoData = await videoRes.json();
+    const pipeS3Link = videoData?.videos?.[0]?.pipeS3Link;
+
+    if (!pipeS3Link) {
+      throw new Error("No pipeS3Link found in AddPipe response");
+    }
+
+    const fileUrl = `https://${pipeS3Link}`;
     console.log("Downloading from:", fileUrl);
 
+    // 2. Download the actual file
     const response = await fetch(fileUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0",
@@ -44,18 +63,26 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await response.arrayBuffer());
 
-    // Upload to your own S3
-    const key = `audio/${videoName}.mp4`;
+    // 3. Upload to your own S3
+    const ext = type || "mp4";
+    const key = `audio/${videoName}.${ext}`;
+
     await s3.send(
       new PutObjectCommand({
         Bucket: process.env.AWS_BUCKET_NAME!,
         Key: key,
         Body: buffer,
-        ContentType: "video/mp4",
+        ContentType: `video/${ext}`,
       })
     );
 
     console.log(`✅ Uploaded to S3: ${key}`);
+
+    const uploadedfileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+
+    const qrCodeDataUrl = await QRCode.toDataURL(uploadedfileUrl); 
+
+    console.log(`✅ QR Code generated for: ${fileUrl}`);
 
     // 3. (Optional) Delete from AddPipe
     try {
@@ -79,7 +106,10 @@ export async function POST(req: NextRequest) {
     }
     
 
-    return NextResponse.json({ success: true, s3Key: key }, { status: 200 });
+    return NextResponse.json(
+      { success: true, s3Key: key, qrCode: qrCodeDataUrl },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("Webhook error:", error);
     return NextResponse.json(
