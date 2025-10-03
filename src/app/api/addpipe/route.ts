@@ -42,12 +42,17 @@ export async function POST(req: NextRequest) {
     }
 
     const videoData = await videoRes.json();
-    const pipeS3Link = videoData?.videos?.[0]?.pipeS3Link;
+    let pipeS3Link: string  = videoData?.videos?.[0]?.pipeS3Link;
     console.log("Video Data", videoData)
     console.log("Pipe Link", pipeS3Link)
 
     if (!pipeS3Link) {
       throw new Error("No pipeS3Link found in AddPipe response");
+    }
+
+    // Normalize link
+    if (pipeS3Link.startsWith("/")) {
+      pipeS3Link = `eu2-addpipe.s3.nl-ams.scw.cloud${pipeS3Link}`;
     }
 
     const fileUrl = `https://${pipeS3Link}`;
