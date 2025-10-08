@@ -2,22 +2,27 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 interface IShopifyOrder extends Document {
-  order_id: number;
-  customer_email: string;
-  customer_name: string;
-  shipping_address: object;
-  addpipe: object;
-  created_at: Date;
+    order_id: string;
+    customer_email: string;
+    customer_name: string;
+    shipping_address: object;
+    addpipe: object;
+    s3_url?: string;
+    qrcode?: string;
+    created_at: Date;
 }
 
 const ShopifyOrderSchema = new Schema<IShopifyOrder>({
-  order_id: { type: Number, required: true, unique: true },
-  customer_email: String,
-  customer_name: String,
-  shipping_address: Object,
-  addpipe: Object,
-  created_at: { type: Date, default: Date.now },
+    order_id: { type: String, required: true, unique: true },
+    customer_email: String,
+    customer_name: String,
+    shipping_address: Object,
+    addpipe: Object,
+    s3_url: String,
+    qrcode: String,
+    created_at: { type: Date, default: Date.now },
 });
+  
 
 export default mongoose.models.ShopifyOrder ||
   mongoose.model<IShopifyOrder>("ShopifyOrder", ShopifyOrderSchema);

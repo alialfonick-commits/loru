@@ -68,7 +68,10 @@ export async function POST(req: NextRequest) {
     // Save to DB
     const existing = await ShopifyOrder.findOne({ order_id: payload.order_id });
     if (!existing) {
-        await ShopifyOrder.create(payload);
+        await ShopifyOrder.create({
+            ...payload,
+            order_id: String(payload.order_id),
+        });
         console.log("Saved new order:", payload.order_id);
         const videoRes = await fetch(`https://api.addpipe.com/video/${payload.addpipe.addpipe_video_id}`, {
             headers: {
@@ -119,21 +122,10 @@ export async function POST(req: NextRequest) {
 
     try {
         // Save S3 URL + QR code into DB
-        const orderIdStr = String(payload.order_id);
-        const orderIdNum = Number(payload.order_id);
-
         const updateResult = await ShopifyOrder.updateOne(
-            { $or: [{ order_id: orderIdStr }, { order_id: orderIdNum }] },
-            {
-                $set: {
-                s3_url: uploadedfileUrl,
-                qrcode: qrCodeDataUrl,
-                },
-            }
+            { order_id: String(payload.order_id) },
+            { $set: { s3_url: uploadedfileUrl, qrcode: qrCodeDataUrl } }
         );
-
-        console.log("🔍 Trying to match:", orderIdStr, orderIdNum);
-        console.log("🔍 Update result:", updateResult);
       
         if (updateResult.modifiedCount > 0) {
           console.log("QR code and S3 URL saved in DB");
