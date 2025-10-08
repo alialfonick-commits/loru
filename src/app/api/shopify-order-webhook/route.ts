@@ -76,11 +76,11 @@ export async function POST(req: NextRequest) {
         },
       });
   
-      if (!videoRes.ok) {
+    if (!videoRes.ok) {
         throw new Error(`Failed to fetch video info from AddPipe: ${videoRes.status}`);
-      }
+    }
 
-      const videoData = await videoRes.json();
+    const videoData = await videoRes.json();
     let pipeS3Link: string = videoData?.videos?.[0]?.pipeS3Link;
 
     if (!pipeS3Link) throw new Error("No pipeS3Link found in AddPipe response");
@@ -117,6 +117,18 @@ export async function POST(req: NextRequest) {
 
     console.log('QR code:', qrCodeDataUrl)
 
+    // Save S3 URL + QR code into DB
+    await ShopifyOrder.updateOne(
+        { order_id: payload.order_id },
+        {
+            $set: {
+                s3_url: uploadedfileUrl,
+                qrcode: qrCodeDataUrl,
+            },
+        }
+    );
+    console.log("✅ QR code and S3 URL saved in DB");
+
     // 4. Delete video from AddPipe
     try {
       const deleteRes = await fetch(`https://api.addpipe.com/video/${payload.addpipe.addpipe_video_id}`, {
@@ -136,7 +148,7 @@ export async function POST(req: NextRequest) {
     }
 
     } else {
-      console.log("ℹ️ Order already exists:", payload.order_id);
+      console.log("Order already exists:", payload.order_id);
     }
 
     // Send this info to AddPipe or your server endpoint
