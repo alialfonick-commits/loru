@@ -119,10 +119,11 @@ export async function POST(req: NextRequest) {
 
     try {
         // Save S3 URL + QR code into DB
-        const orderIdNum = Number(payload.order_id); // convert string to number
+        const orderIdStr = String(payload.order_id);
+        const orderIdNum = Number(payload.order_id);
 
         const updateResult = await ShopifyOrder.updateOne(
-            { order_id: orderIdNum },
+            { $or: [{ order_id: orderIdStr }, { order_id: orderIdNum }] },
             {
                 $set: {
                 s3_url: uploadedfileUrl,
@@ -130,6 +131,9 @@ export async function POST(req: NextRequest) {
                 },
             }
         );
+
+        console.log("🔍 Trying to match:", orderIdStr, orderIdNum);
+        console.log("🔍 Update result:", updateResult);
       
         if (updateResult.modifiedCount > 0) {
           console.log("QR code and S3 URL saved in DB");
