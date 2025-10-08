@@ -117,17 +117,28 @@ export async function POST(req: NextRequest) {
 
     console.log('QR code:', qrCodeDataUrl)
 
-    // Save S3 URL + QR code into DB
-    await ShopifyOrder.updateOne(
-        { order_id: payload.order_id },
-        {
+    try {
+        // Save S3 URL + QR code into DB
+        const updateResult = await ShopifyOrder.updateOne(
+          { order_id: payload.order_id },
+          {
             $set: {
-                s3_url: uploadedfileUrl,
-                qrcode: qrCodeDataUrl,
+              s3_url: uploadedfileUrl,
+              qrcode: qrCodeDataUrl,
             },
+          }
+        );
+      
+        if (updateResult.modifiedCount > 0) {
+          console.log("✅ QR code and S3 URL saved in DB");
+        } else if (updateResult.matchedCount > 0) {
+          console.warn("⚠️ Order found but nothing was updated (possibly same data)");
+        } else {
+          console.error("❌ No matching order found to update:", payload.order_id);
         }
-    );
-    console.log("✅ QR code and S3 URL saved in DB");
+    } catch (err) {
+        console.error("❌ Failed to save QR code and S3 URL in DB:", err);
+    }
 
     // 4. Delete video from AddPipe
     try {
