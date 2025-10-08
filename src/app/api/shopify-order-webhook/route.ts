@@ -23,11 +23,11 @@ async function downloadWithRetry(
         return Buffer.from(await res.arrayBuffer());
       }
   
-      console.warn(`⚠️ Download attempt ${i + 1} failed (${res.status})`);
+      console.warn(`Download attempt ${i + 1} failed (${res.status})`);
   
       if (i < retries - 1) {
         const wait = delay * Math.pow(2, i); // exponential backoff
-        console.log(`⏳ Retrying in ${wait / 1000}s...`);
+        console.log(`Retrying in ${wait / 1000}s...`);
         await new Promise((r) => setTimeout(r, wait));
       }
     }
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // Log or inspect order payload
-    console.log("✅ Shopify Order Webhook Received:", body.id);
+    console.log("Shopify Order Webhook Received:", body.id);
 
     // Extract AddPipe-related attributes from Shopify order
     const attributes = body.note_attributes || [];
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       addpipe: addpipeData,
     };
 
-    console.log("🎧 Forwarding to AddPipe!:", payload);
+    console.log("Forwarding to AddPipe!:", payload);
 
     // Connect to MongoDB
     await connectDB();
@@ -68,13 +68,13 @@ export async function POST(req: NextRequest) {
     // Save to DB
     const existing = await ShopifyOrder.findOne({ order_id: payload.order_id });
     if (!existing) {
-      await ShopifyOrder.create(payload);
-      console.log("✅ Saved new order:", payload.order_id);
-      const videoRes = await fetch(`https://api.addpipe.com/video/${payload.addpipe.addpipe_video_id}`, {
-        headers: {
-          "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY!,
-        },
-      });
+        await ShopifyOrder.create(payload);
+        console.log("Saved new order:", payload.order_id);
+        const videoRes = await fetch(`https://api.addpipe.com/video/${payload.addpipe.addpipe_video_id}`, {
+            headers: {
+            "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY!,
+            },
+        });
   
     if (!videoRes.ok) {
         throw new Error(`Failed to fetch video info from AddPipe: ${videoRes.status}`);
@@ -108,36 +108,38 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    console.log(`✅ Uploaded to S3: ${key}`);
+    console.log(`Uploaded to S3: ${key}`);
 
     const uploadedfileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
     const qrCodeDataUrl = await QRCode.toDataURL(uploadedfileUrl);
 
-    console.log(`✅ QR Code generated for: ${uploadedfileUrl}`);
+    console.log(`QR Code generated for: ${uploadedfileUrl}`);
 
     console.log('QR code:', qrCodeDataUrl)
 
     try {
         // Save S3 URL + QR code into DB
+        const orderIdNum = Number(payload.order_id); // convert string to number
+
         const updateResult = await ShopifyOrder.updateOne(
-          { order_id: payload.order_id },
-          {
-            $set: {
-              s3_url: uploadedfileUrl,
-              qrcode: qrCodeDataUrl,
-            },
-          }
+            { order_id: orderIdNum },
+            {
+                $set: {
+                s3_url: uploadedfileUrl,
+                qrcode: qrCodeDataUrl,
+                },
+            }
         );
       
         if (updateResult.modifiedCount > 0) {
-          console.log("✅ QR code and S3 URL saved in DB");
+          console.log("QR code and S3 URL saved in DB");
         } else if (updateResult.matchedCount > 0) {
-          console.warn("⚠️ Order found but nothing was updated (possibly same data)");
+          console.warn("Order found but nothing was updated (possibly same data)");
         } else {
-          console.error("❌ No matching order found to update:", payload.order_id);
+          console.error("No matching order found to update:", payload.order_id);
         }
     } catch (err) {
-        console.error("❌ Failed to save QR code and S3 URL in DB:", err);
+        console.error("Failed to save QR code and S3 URL in DB:", err);
     }
 
     // 4. Delete video from AddPipe
@@ -150,9 +152,9 @@ export async function POST(req: NextRequest) {
       });
 
       if (!deleteRes.ok) {
-        console.warn(`⚠️ Failed to delete video ${payload.addpipe.addpipe_video_id} from AddPipe`);
+        console.warn(`Failed to delete video ${payload.addpipe.addpipe_video_id} from AddPipe`);
       } else {
-        console.log(`🗑️ Deleted video ${payload.addpipe.addpipe_video_id} from AddPipe`);
+        console.log(`Deleted video ${payload.addpipe.addpipe_video_id} from AddPipe`);
       }
     } catch (err) {
       console.error("Error deleting video from AddPipe:", err);
@@ -172,7 +174,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("❌ Error handling Shopify webhook:", error);
+    console.error("Error handling Shopify webhook:", error);
     return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 });
   }
 }
