@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/mongodb";
+import ShopifyOrder from "@/models/ShopifyOrder";
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,6 +30,18 @@ export async function POST(req: NextRequest) {
 
     console.log("🎧 Forwarding to AddPipe:", payload);
 
+    // Connect to MongoDB
+    await connectDB();
+
+    // Save to DB
+    const existing = await ShopifyOrder.findOne({ order_id: payload.order_id });
+    if (!existing) {
+      await ShopifyOrder.create(payload);
+      console.log("✅ Saved new order:", payload.order_id);
+    } else {
+      console.log("ℹ️ Order already exists:", payload.order_id);
+    }
+    
     // Send this info to AddPipe or your server endpoint
     // Replace with your AddPipe API URL
     // await fetch("https://api.addpipe.com/save-order-data", {
