@@ -4,6 +4,85 @@ import ShopifyOrder from "@/models/ShopifyOrder";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { s3 } from "@/lib/s3";
 import QRCode from "qrcode";
+import crypto from "crypto";
+
+// Add helper function here (above POST handler)
+async function createSiteflowOrder(uploadedfileUrl: string, qrCodeDataUrl: string) {
+    const method = "POST";
+    const path = "/api/order";
+    const timestamp = Math.floor(Date.now() / 1000);
+    const secret = process.env.SITEFLOW_SECRET!;
+    const token = process.env.SITEFLOW_TOKEN!;
+  
+    const stringToSign = `${method} ${path} ${timestamp}`;
+    const signature = crypto
+      .createHmac("sha1", secret)
+      .update(stringToSign)
+      .digest("hex");
+  
+    const authHeader = `${token}:${signature}`;
+  
+    const body = {
+      destination: { name: "pureprint" },
+      orderData: {
+        sourceOrderId: `Keepr_${Date.now()}`,
+        items: [
+          {
+            sku: "keepr_hardback_210x210_staging",
+            sourceItemId: "000001",
+            quantity: 1,
+            components: [
+              {
+                code: "cover",
+                fetch: true,
+                path: uploadedfileUrl,
+              },
+              {
+                code: "text",
+                fetch: true,
+                attributes: { keepr_qrcode: qrCodeDataUrl },
+                path: uploadedfileUrl,
+              },
+            ],
+          },
+        ],
+        shipments: [
+          {
+            shipTo: {
+              name: "Auto Generated",
+              address1: "Address Line 1",
+              town: "City",
+              postcode: "ZIP123",
+              isoCountry: "GB",
+              email: "autogen@example.com",
+            },
+            carrier: { alias: "standard" },
+          },
+        ],
+      },
+    };
+  
+    const res = await fetch("https://orders.oneflow.io/api/order", {
+      method: "POST",
+      headers: {
+        "x-oneflow-authorization": authHeader,
+        "x-oneflow-date": String(timestamp),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("SiteFlow order creation failed:", text);
+      throw new Error(`SiteFlow Error: ${res.status}`);
+    }
+  
+    const data = await res.json();
+    console.log("SiteFlow order created:", data);
+    return data;
+}
 
 // --- Helper: Retry download with exponential backoff ---
 async function downloadWithRetry(
@@ -32,14 +111,14 @@ async function downloadWithRetry(
       }
     }
     throw new Error(`Failed to download after ${retries} attempts`);
-  }
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
     // Log or inspect order payload
-    console.log("Shopify Order Webhook Received:", body.id);
+    console.log("Shopify Order Webhook Received:", body);
 
     // Extract AddPipe-related attributes from Shopify order
     const attributes = body.note_attributes || [];
@@ -120,6 +199,10 @@ export async function POST(req: NextRequest) {
 
     console.log('QR code:', qrCodeDataUrl)
 
+    const siteflowOrder = await createSiteflowOrder(uploadedfileUrl, qrCodeDataUrl);
+    
+    console.log("SiteFlow Order Response:", siteflowOrder);
+    
     try {
         // Save S3 URL + QR code into DB
         const updateResult = await ShopifyOrder.updateOne(
@@ -159,14 +242,6 @@ export async function POST(req: NextRequest) {
     } else {
       console.log("Order already exists:", payload.order_id);
     }
-
-    // Send this info to AddPipe or your server endpoint
-    // Replace with your AddPipe API URL
-    // await fetch("https://api.addpipe.com/save-order-data", {
-    //   method: "POST",
-    //   headers: { "Content-Type": "application/json" },
-    //   body: JSON.stringify(payload),
-    // });
 
     return NextResponse.json({ success: true });
   } catch (error) {
