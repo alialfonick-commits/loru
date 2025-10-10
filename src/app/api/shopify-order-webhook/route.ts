@@ -22,6 +22,7 @@ interface ShippingAddress {
 }
 
 interface LineItem {
+  id: string;
   name: string;
   sku: string;
 }
@@ -55,7 +56,7 @@ async function createSiteflowOrder(
           {
             sku: item.sku || "keepr_hardback_210x210_staging",
             name: item.name || "Keepr Book",
-            sourceItemId: "000001",
+            sourceItemId: item.id,
             quantity: 1,
             components: [
               // {
@@ -234,14 +235,30 @@ export async function POST(req: NextRequest) {
     const firstItem = payload.line_items[0];
     const shippingAddress = payload.shipping_address;
 
-    const siteflowOrder = await createSiteflowOrder(
-      uploadedfileUrl,
-      qrCodeDataUrl,
-      shippingAddress,
-      firstItem
-    );
+    try {
+      const siteflowOrder = await createSiteflowOrder(
+        uploadedfileUrl,
+        qrCodeDataUrl,
+        shippingAddress,
+        firstItem
+      );
     
-    console.log("SiteFlow Order Response:", siteflowOrder);
+      if (siteflowOrder?._id) {
+        console.log("SiteFlow order created successfully:", siteflowOrder._id);
+        console.log("SiteFlow order URL:", siteflowOrder.url);
+    
+        // Optional: save order ID in your DB for tracking
+        await ShopifyOrder.updateOne(
+          { order_id: String(payload.order_id) },
+          { $set: { siteflow_order_id: siteflowOrder._id, siteflow_order_url: siteflowOrder.url } }
+        );
+      } else {
+        console.error("SiteFlow order creation failed — missing _id:", siteflowOrder);
+      }
+    
+    } catch (err) {
+      console.error("SiteFlow order creation error:", err);
+    }
     
     try {
         // Save S3 URL + QR code into DB
