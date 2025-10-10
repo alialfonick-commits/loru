@@ -54,7 +54,8 @@ async function createSiteflowOrder(
         sourceOrderId: `Keepr_${Date.now()}`,
         items: [
           {
-            sku: item.sku || "keepr_hardback_210x210_staging",
+            // sku: item.sku || "keepr_hardback_210x210_staging",
+            sku: "keepr_hardback_210x210_staging",
             name: item.name || "Keepr Book",
             sourceItemId: item.id,
             quantity: 1,
@@ -166,6 +167,7 @@ export async function POST(req: NextRequest) {
       shipping_address: body.shipping_address,
       addpipe: addpipeData,
       line_items: body.line_items?.map((item: any) => ({
+        id: String(item.id),
         name: item.name,
         sku: item.sku,
       })) || [],
