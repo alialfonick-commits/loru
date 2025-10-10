@@ -6,8 +6,33 @@ import { s3 } from "@/lib/s3";
 import QRCode from "qrcode";
 import crypto from "crypto";
 
+interface ShippingAddress {
+  first_name: string;
+  last_name: string;
+  address1: string;
+  address2?: string | null;
+  city: string;
+  zip: string;
+  province?: string;
+  country: string;
+  country_code: string;
+  phone?: string;
+  company?: string;
+  email?: string;
+}
+
+interface LineItem {
+  name: string;
+  sku: string;
+}
+
 // Add helper function here (above POST handler)
-async function createSiteflowOrder(uploadedfileUrl: string, qrCodeDataUrl: string) {
+async function createSiteflowOrder(
+    uploadedfileUrl: string,
+    qrCodeDataUrl: string,
+    shippingAddress: ShippingAddress,
+    item: LineItem
+  ) {
     const method = "POST";
     const path = "/api/order";
     const timestamp = Math.floor(Date.now() / 1000);
@@ -28,15 +53,16 @@ async function createSiteflowOrder(uploadedfileUrl: string, qrCodeDataUrl: strin
         sourceOrderId: `Keepr_${Date.now()}`,
         items: [
           {
-            sku: "keepr_hardback_210x210_staging",
+            sku: item.sku || "keepr_hardback_210x210_staging",
+            name: item.name || "Keepr Book",
             sourceItemId: "000001",
             quantity: 1,
             components: [
-              {
-                code: "cover",
-                fetch: true,
-                path: uploadedfileUrl,
-              },
+              // {
+              //   code: "cover",
+              //   fetch: true,
+              //   path: uploadedfileUrl,
+              // },
               {
                 code: "text",
                 fetch: true,
@@ -49,12 +75,13 @@ async function createSiteflowOrder(uploadedfileUrl: string, qrCodeDataUrl: strin
         shipments: [
           {
             shipTo: {
-              name: "Auto Generated",
-              address1: "Address Line 1",
-              town: "City",
-              postcode: "ZIP123",
-              isoCountry: "GB",
-              email: "autogen@example.com",
+              name: `${shippingAddress.first_name} ${shippingAddress.last_name}`.trim(),
+              address1: shippingAddress.address1,
+              address2: shippingAddress.address2 || "",
+              town: shippingAddress.city,
+              postcode: shippingAddress.zip,
+              isoCountry: shippingAddress.country_code,
+              email: shippingAddress.email || "",
             },
             carrier: { alias: "standard" },
           },
@@ -134,9 +161,13 @@ export async function POST(req: NextRequest) {
     const payload = {
       order_id: body.id,
       customer_email: body.email,
-      customer_name: body.customer?.first_name + " " + body.customer?.last_name,
+      customer_name: `${body.customer?.first_name || ""} ${body.customer?.last_name || ""}`.trim(),
       shipping_address: body.shipping_address,
       addpipe: addpipeData,
+      line_items: body.line_items?.map((item: any) => ({
+        name: item.name,
+        sku: item.sku,
+      })) || [],
     };
 
     console.log("Forwarding to AddPipe!:", payload);
@@ -193,13 +224,22 @@ export async function POST(req: NextRequest) {
     console.log(`Uploaded to S3: ${key}`);
 
     const uploadedfileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+
     const qrCodeDataUrl = await QRCode.toDataURL(uploadedfileUrl);
 
     console.log(`QR Code generated for: ${uploadedfileUrl}`);
 
     console.log('QR code:', qrCodeDataUrl)
 
-    const siteflowOrder = await createSiteflowOrder(uploadedfileUrl, qrCodeDataUrl);
+    const firstItem = payload.line_items[0];
+    const shippingAddress = payload.shipping_address;
+
+    const siteflowOrder = await createSiteflowOrder(
+      uploadedfileUrl,
+      qrCodeDataUrl,
+      shippingAddress,
+      firstItem
+    );
     
     console.log("SiteFlow Order Response:", siteflowOrder);
     
