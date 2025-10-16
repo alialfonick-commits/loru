@@ -47,6 +47,29 @@ async function createSiteflowOrder(
       .digest("hex");
   
     const authHeader = `${token}:${signature}`;
+    console.log(uploadedfileUrl)
+
+    // Map each song to its S3 cover & inside PDFs
+    const pdfMap: Record<
+    string,
+    { cover: string; inside: string }
+    > = {
+      "Born To Be Loved": {
+        cover:
+          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/Born+To+Be+Loved/cover.pdf",
+        inside:
+          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/Born+To+Be+Loved/inside.pdf",
+      },
+      "I Will Always Love You": {
+        cover:
+          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/I+Will+Always+Love+You/cover.pdf",
+        inside:
+          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/I+Will+Always+Love+You/inside.pdf",
+      },
+    };
+
+    // Get correct cover/inside based on item.name
+    const pdfs = pdfMap[item.name];
   
     const body = {
       destination: { name: "pureprint" },
@@ -60,16 +83,16 @@ async function createSiteflowOrder(
             sourceItemId: item.id,
             quantity: 1,
             components: [
-              // {
-              //   code: "cover",
-              //   fetch: true,
-              //   path: uploadedfileUrl,
-              // },
+              {
+                code: "cover",
+                fetch: true,
+                path: pdfs ? pdfs.cover : {},
+              },
               {
                 code: "text",
                 fetch: true,
                 attributes: { keepr_qrcode: qrCodeDataUrl },
-                path: uploadedfileUrl,
+                ...(pdfs ? { path: pdfs.inside } : {}),
               },
             ],
           },
