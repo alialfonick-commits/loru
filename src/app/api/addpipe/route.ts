@@ -98,24 +98,33 @@ export async function POST(req: NextRequest) {
     console.log(`Uploaded to S3: ${key}`);
 
     const uploadedfileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
-    const qrCodeDataUrl = await QRCode.toDataURL(uploadedfileUrl);
+    
+    let qrImageUrl = null;
 
-    const base64Data = qrCodeDataUrl.replace(/^data:image\/png;base64,/, "");
-    const qrBuffer = Buffer.from(base64Data, "base64");
+    try {
+      // 1️ Generate QR code for uploaded audio URL
+      const qrCodeDataUrl = await QRCode.toDataURL(uploadedfileUrl);
 
-    const qrKey = `qrcodes/${videoName}.png`;
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: process.env.AWS_BUCKET_NAME!,
-        Key: qrKey,
-        Body: qrBuffer,
-        ContentType: "image/png",
-      })
-    );
+      // 2️ Convert Base64 to buffer
+      const base64Data = qrCodeDataUrl.replace(/^data:image\/png;base64,/, "");
+      const qrBuffer = Buffer.from(base64Data, "base64");
 
-    const qrImageUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${qrKey}`;
+      // 3️ Upload QR image to S3
+      const qrKey = `qrcodes/${videoName}.png`;
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: process.env.AWS_BUCKET_NAME!,
+          Key: qrKey,
+          Body: qrBuffer,
+          ContentType: "image/png",
+        })
+      );
 
-    console.log(`QR image uploaded: ${qrImageUrl}`);
+      qrImageUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${qrKey}`;
+      console.log(`QR image uploaded: ${qrImageUrl}`);
+    } catch (err) {
+      console.error("Failed to generate or upload QR code:", err);
+    }
 
     // 4. Delete video from AddPipe
     try {
@@ -136,7 +145,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: true, s3Key: key, qrCode: qrCodeDataUrl },
+      { success: true, s3Key: key, qrCode: qrImageUrl },
       { status: 200 }
     );
   } catch (error) {
