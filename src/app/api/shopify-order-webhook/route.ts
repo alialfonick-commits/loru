@@ -251,19 +251,44 @@ export async function POST(req: NextRequest) {
 
     const uploadedfileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
 
-    const qrCodeDataUrl = await QRCode.toDataURL(uploadedfileUrl);
+    let qrImageUrl = null;
 
-    console.log(`QR Code generated for: ${uploadedfileUrl}`);
+    try {
+      // 1️ Generate QR code for uploaded audio URL
+      const qrCodeDataUrl = await QRCode.toDataURL(uploadedfileUrl);
 
-    console.log('QR code:', qrCodeDataUrl)
+      // 2️ Convert Base64 to buffer
+      const base64Data = qrCodeDataUrl.replace(/^data:image\/png;base64,/, "");
+      const qrBuffer = Buffer.from(base64Data, "base64");
+
+      // 3️ Upload QR image to S3
+      const qrKey = `qrcodes/${payload.addpipe.addpipe_video_id}.png`;
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: process.env.AWS_BUCKET_NAME!,
+          Key: qrKey,
+          Body: qrBuffer,
+          ContentType: "image/png",
+        })
+      );
+
+      qrImageUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${qrKey}`;
+      console.log(`QR image uploaded: ${qrImageUrl}`);
+    } catch (err) {
+      console.error("Failed to generate or upload QR code:", err);
+    }
 
     const firstItem = payload.line_items[0];
     const shippingAddress = payload.shipping_address;
 
+    if (!qrImageUrl) {
+      throw new Error("QR image URL could not be generated.");
+    }
+    
     try {
       const siteflowOrder = await createSiteflowOrder(
         uploadedfileUrl,
-        qrCodeDataUrl,
+        qrImageUrl,
         shippingAddress,
         firstItem
       );
@@ -289,7 +314,7 @@ export async function POST(req: NextRequest) {
         // Save S3 URL + QR code into DB
         const updateResult = await ShopifyOrder.updateOne(
             { order_id: String(payload.order_id) },
-            { $set: { s3_url: uploadedfileUrl, qrcode: qrCodeDataUrl } }
+            { $set: { s3_url: uploadedfileUrl, qrcode: qrImageUrl } }
         );
       
         if (updateResult.modifiedCount > 0) {
