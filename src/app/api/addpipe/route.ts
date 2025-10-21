@@ -34,11 +34,11 @@ async function downloadWithRetry(
       return Buffer.from(await res.arrayBuffer());
     }
 
-    console.warn(`⚠️ Download attempt ${i + 1} failed (${res.status})`);
+    console.warn(`Download attempt ${i + 1} failed (${res.status})`);
 
     if (i < retries - 1) {
       const wait = delay * Math.pow(2, i); // exponential backoff
-      console.log(`⏳ Retrying in ${wait / 1000}s...`);
+      console.log(`Retrying in ${wait / 1000}s...`);
       await new Promise((r) => setTimeout(r, wait));
     }
   }
@@ -95,14 +95,27 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    console.log(`✅ Uploaded to S3: ${key}`);
+    console.log(`Uploaded to S3: ${key}`);
 
     const uploadedfileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
     const qrCodeDataUrl = await QRCode.toDataURL(uploadedfileUrl);
 
-    console.log(`✅ QR Code generated for: ${uploadedfileUrl}`);
+    const base64Data = qrCodeDataUrl.replace(/^data:image\/png;base64,/, "");
+    const qrBuffer = Buffer.from(base64Data, "base64");
 
-    console.log('QR code:', qrCodeDataUrl)
+    const qrKey = `qrcodes/${videoName}.png`;
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: process.env.AWS_BUCKET_NAME!,
+        Key: qrKey,
+        Body: qrBuffer,
+        ContentType: "image/png",
+      })
+    );
+
+    const qrImageUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${qrKey}`;
+
+    console.log(`QR image uploaded: ${qrImageUrl}`);
 
     // 4. Delete video from AddPipe
     try {
@@ -114,9 +127,9 @@ export async function POST(req: NextRequest) {
       });
 
       if (!deleteRes.ok) {
-        console.warn(`⚠️ Failed to delete video ${videoName} from AddPipe`);
+        console.warn(`Failed to delete video ${videoName} from AddPipe`);
       } else {
-        console.log(`🗑️ Deleted video ${videoName} from AddPipe`);
+        console.log(`Deleted video ${videoName} from AddPipe`);
       }
     } catch (err) {
       console.error("Error deleting video from AddPipe:", err);
