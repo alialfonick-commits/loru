@@ -47,7 +47,7 @@ async function createSiteflowOrder(
       .digest("hex");
   
     const authHeader = `${token}:${signature}`;
-    console.log(uploadedfileUrl)
+    console.log(qrCodeDataUrl)
 
     // Map each song to its S3 cover & inside PDFs
     const pdfMap: Record<
