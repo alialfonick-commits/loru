@@ -53,15 +53,15 @@ async function createSiteflowOrder(
     > = {
       "Born To Be Loved": {
         cover:
-          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/Born+To+Be+Loved/cover.pdf",
+          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/Born+To+Be+Loved/cover-2.pdf",
         inside:
-          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/Born+To+Be+Loved/BornToBeLoved_210x210_interior.pdf",
+          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/Born+To+Be+Loved/BornToBeLoved_210x210_interior-2.pdf",
       },
       "I Will Always Love You": {
         cover:
-          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/I+Will+Always+Love+You/cover.pdf",
+          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/I+Will+Always+Love+You/IWillAlwayaLoveYou_HardbackCoverTemplate-2.pdf",
         inside:
-          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/I+Will+Always+Love+You/IWillAlwaysLoveYou_210x210_interior.pdf",
+          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/I+Will+Always+Love+You/IWillAlwaysLoveYou_210x210_interior-2.pdf",
       },
     };
 
