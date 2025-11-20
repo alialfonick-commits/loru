@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // Log or inspect order payload
-    console.log("Shopify Order Webhook Received:", body);
+    console.log("Shopify Order Webhook Received:", body.order_number);
 
     // Extract AddPipe-related attributes from Shopify order
     const attributes = body.note_attributes || [];
