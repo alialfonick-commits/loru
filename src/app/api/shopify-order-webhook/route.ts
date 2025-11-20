@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // Log or inspect order payload
-    //console.log("Shopify Order Webhook Received:", body);
+    console.log("Shopify Order Webhook Received:", body);
 
     // Extract AddPipe-related attributes from Shopify order
     const attributes = body.note_attributes || [];
@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
       })) || [],
     };
 
-    console.log("Forwarding to AddPipe!:", payload);
+    //console.log("Forwarding to AddPipe!:", payload);
 
     // Connect to MongoDB
     await connectDB();
@@ -206,7 +206,7 @@ export async function POST(req: NextRequest) {
             ...payload,
             order_id: String(payload.order_id),
         });
-        console.log("Saved new order:", payload.order_id);
+        //console.log("Saved new order:", payload.order_id);
         const videoRes = await fetch(`https://api.addpipe.com/video/${payload.addpipe.addpipe_video_id}`, {
             headers: {
             "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY!,
@@ -227,7 +227,7 @@ export async function POST(req: NextRequest) {
       pipeS3Link = `eu2-addpipe.s3.nl-ams.scw.cloud${pipeS3Link}`;
     }
     const fileUrl = `https://${pipeS3Link}`;
-    console.log("Downloading from:", fileUrl);
+    //console.log("Downloading from:", fileUrl);
 
     // 2. Download file with retry
     const buffer = await downloadWithRetry(fileUrl);
@@ -245,7 +245,7 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    console.log(`Uploaded to S3: ${key}`);
+    //console.log(`Uploaded to S3: ${key}`);
 
     const uploadedfileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
 
@@ -260,8 +260,8 @@ export async function POST(req: NextRequest) {
       );
     
       if (siteflowOrder?._id) {
-        console.log("SiteFlow order created successfully:", siteflowOrder._id);
-        console.log("SiteFlow order URL:", siteflowOrder.url);
+        //console.log("SiteFlow order created successfully:", siteflowOrder._id);
+        //console.log("SiteFlow order URL:", siteflowOrder.url);
     
         // Optional: save order ID in your DB for tracking
         await ShopifyOrder.updateOne(
