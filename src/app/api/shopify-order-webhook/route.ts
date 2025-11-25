@@ -79,7 +79,7 @@ async function createSiteflowOrder(
       sourceOrderId: sourceOrderId,
       items: [
         {
-          sku: "keepr_hardback_210x210_staging",
+          sku: "keepr_hardback_210x210",
           name: item.name || "Keepr Book",
           sourceItemId: item.id,
           quantity: 1,
