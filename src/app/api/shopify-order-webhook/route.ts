@@ -1,3 +1,6 @@
+// app/api/webhook (or wherever your route lives)
+// Replace the existing POST handler file with this content.
+
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import ShopifyOrder from "@/models/ShopifyOrder";
@@ -5,6 +8,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { s3 } from "@/lib/s3";
 import crypto from "crypto";
 
+/* ---------- Types ---------- */
 interface ShippingAddress {
   first_name: string;
   last_name: string;
@@ -20,302 +24,372 @@ interface ShippingAddress {
   email?: string;
 }
 
-interface LineItem {
+interface LineItemMinimal {
   id: string;
   name: string;
   sku: string;
 }
 
-// Add helper function here (above POST handler)
-async function createSiteflowOrder(
-    uploadedfileUrl: string,
-    shippingAddress: ShippingAddress,
-    item: LineItem
-  ) {
-    const method = "POST";
-    const path = "/api/order";
-    const timestamp = Math.floor(Date.now() / 1000);
-    const secret = process.env.SITEFLOW_SECRET!;
-    const token = process.env.SITEFLOW_TOKEN!;
-  
-    const stringToSign = `${method} ${path} ${timestamp}`;
-    const signature = crypto
-      .createHmac("sha1", secret)
-      .update(stringToSign)
-      .digest("hex");
-  
-    const authHeader = `${token}:${signature}`;
-
-    // Map each song to its S3 cover & inside PDFs
-    const pdfMap: Record<
-    string,
-    { cover: string; inside: string }
-    > = {
-      "Born To Be Loved": {
-        cover:
-          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/Born+To+Be+Loved/cover-2.pdf",
-        inside:
-          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/Born+To+Be+Loved/BornToBeLoved_210x210_interior-2.pdf",
-      },
-      "I Will Always Love You": {
-        cover:
-          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/I+Will+Always+Love+You/IWillAlwayaLoveYou_HardbackCoverTemplate-2.pdf",
-        inside:
-          "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/I+Will+Always+Love+You/IWillAlwaysLoveYou_210x210_interior-3.pdf",
-      },
-    };
-
-    // Get correct cover/inside based on item.name
-    const pdfs = pdfMap[item.name];
-  
-    const body = {
-      destination: { name: "pureprint" },
-      orderData: {
-        sourceOrderId: `Keepr_${Date.now()}`,
-        items: [
-          {
-            // sku: item.sku || "keepr_hardback_210x210_staging",
-            sku: "keepr_hardback_210x210",
-            name: item.name || "Keepr Book",
-            sourceItemId: item.id,
-            quantity: 1,
-            components: [
-              {
-                code: "cover",
-                fetch: true,
-                path: pdfs ? pdfs.cover : {},
-              },
-              {
-                code: "text",
-                fetch: true,
-                attributes: { keepr_qrcode: uploadedfileUrl },
-                ...(pdfs ? { path: pdfs.inside } : {}),
-              },
-            ],
-          },
-        ],
-        shipments: [
-          {
-            shipTo: {
-              name: `${shippingAddress.first_name} ${shippingAddress.last_name}`.trim(),
-              address1: shippingAddress.address1,
-              address2: shippingAddress.address2 || "",
-              town: shippingAddress.city,
-              postcode: shippingAddress.zip,
-              isoCountry: shippingAddress.country_code,
-              email: shippingAddress.email || "",
-            },
-            carrier: { alias: "standard" },
-          },
-        ],
-      },
-    };
-  
-    const res = await fetch("https://orders.oneflow-test.io/api/order", {
-      method: "POST",
-      headers: {
-        "x-oneflow-authorization": authHeader,
-        "x-oneflow-date": String(timestamp),
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-  
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("SiteFlow order creation failed:", text);
-      throw new Error(`SiteFlow Error: ${res.status}`);
-    }
-  
-    const data = await res.json();
-    console.log("SiteFlow order created:", data);
-    return data;
+interface ParsedLineItem {
+  original: any;
+  props: Record<string, string>;
+  addpipe_video_id?: string;
+  addpipe_stream?: string;
 }
 
-// --- Helper: Retry download with exponential backoff ---
+/* ---------- Helper: createSiteflowOrder (keeps your implementation) ---------- */
+async function createSiteflowOrder(
+  uploadedfileUrl: string,
+  shippingAddress: ShippingAddress,
+  item: LineItemMinimal
+) {
+  const method = "POST";
+  const path = "/api/order";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const secret = process.env.SITEFLOW_SECRET!;
+  const token = process.env.SITEFLOW_TOKEN!;
+
+  const stringToSign = `${method} ${path} ${timestamp}`;
+  const signature = crypto
+    .createHmac("sha1", secret)
+    .update(stringToSign)
+    .digest("hex");
+
+  const authHeader = `${token}:${signature}`;
+
+  const pdfMap: Record<string, { cover: string; inside: string }> = {
+    "Born To Be Loved": {
+      cover:
+        "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/Born+To+Be+Loved/cover-2.pdf",
+      inside:
+        "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/Born+To+Be+Loved/BornToBeLoved_210x210_interior-2.pdf",
+    },
+    "I Will Always Love You": {
+      cover:
+        "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/I+Will+Always+Love+You/IWillAlwayaLoveYou_HardbackCoverTemplate-2.pdf",
+      inside:
+        "https://keepr-audio.s3.eu-north-1.amazonaws.com/pdfs/I+Will+Always+Love+You/IWillAlwaysLoveYou_210x210_interior-3.pdf",
+    },
+  };
+
+  const pdfs = pdfMap[item.name];
+
+  const body = {
+    destination: { name: "pureprint" },
+    orderData: {
+      sourceOrderId: `Keepr_${Date.now()}`,
+      items: [
+        {
+          sku: "keepr_hardback_210x210_staging",
+          name: item.name || "Keepr Book",
+          sourceItemId: item.id,
+          quantity: 1,
+          components: [
+            {
+              code: "cover",
+              fetch: true,
+              path: pdfs ? pdfs.cover : {},
+            },
+            {
+              code: "text",
+              fetch: true,
+              attributes: { keepr_qrcode: uploadedfileUrl },
+              ...(pdfs ? { path: pdfs.inside } : {}),
+            },
+          ],
+        },
+      ],
+      shipments: [
+        {
+          shipTo: {
+            name: `${shippingAddress.first_name} ${shippingAddress.last_name}`.trim(),
+            address1: shippingAddress.address1,
+            address2: shippingAddress.address2 || "",
+            town: shippingAddress.city,
+            postcode: shippingAddress.zip,
+            isoCountry: shippingAddress.country_code,
+            email: shippingAddress.email || "",
+          },
+          carrier: { alias: "standard" },
+        },
+      ],
+    },
+  };
+
+  const res = await fetch("https://orders.oneflow-test.io/api/order", {
+    method: "POST",
+    headers: {
+      "x-oneflow-authorization": authHeader,
+      "x-oneflow-date": String(timestamp),
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("SiteFlow order creation failed:", text);
+    throw new Error(`SiteFlow Error: ${res.status}`);
+  }
+
+  const data = await res.json();
+  console.log("SiteFlow order created:", data);
+  return data;
+}
+
+/* ---------- Helper: download with retry (exponential backoff) ---------- */
 async function downloadWithRetry(
-    url: string,
-    retries = 5,
-    delay = 2000 // start with 2s
-  ): Promise<Buffer> {
-    for (let i = 0; i < retries; i++) {
+  url: string,
+  retries = 5,
+  delay = 2000
+): Promise<Buffer> {
+  for (let i = 0; i < retries; i++) {
+    try {
       const res = await fetch(url, {
         headers: {
           "User-Agent": "Mozilla/5.0",
-          "Accept": "*/*",
+          Accept: "*/*",
         },
       });
-  
+
       if (res.ok) {
         return Buffer.from(await res.arrayBuffer());
       }
-  
+
       console.warn(`Download attempt ${i + 1} failed (${res.status})`);
-  
-      if (i < retries - 1) {
-        const wait = delay * Math.pow(2, i); // exponential backoff
-        console.log(`Retrying in ${wait / 1000}s...`);
-        await new Promise((r) => setTimeout(r, wait));
-      }
+    } catch (err) {
+      console.warn(`Download attempt ${i + 1} error:`, err);
     }
-    throw new Error(`Failed to download after ${retries} attempts`);
+
+    if (i < retries - 1) {
+      const wait = delay * Math.pow(2, i);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw new Error(`Failed to download after ${retries} attempts`);
 }
 
+/* ---------- Helper: parse Shopify line item properties array -> map ---------- */
+function propertiesArrayToMap(propertiesArray: any[] = []) {
+  const map: Record<string, string> = {};
+  if (!Array.isArray(propertiesArray)) return map;
+
+  for (const p of propertiesArray) {
+    if (!p) continue;
+    // Shopify properties may be { name, value } or plain object key/value pairs
+    if (typeof p === "object" && ("name" in p || "key" in p)) {
+      const name = p.name ?? p.key;
+      const value = p.value ?? p.value;
+      if (name) map[String(name)] = String(value ?? "");
+      continue;
+    }
+    // fallback: if it's a 2-length array or other form, skip
+  }
+  return map;
+}
+
+/* ---------- Main POST handler ---------- */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    console.log("Shopify Order Webhook Received:", body?.id ?? "(no id)");
 
-    // Log or inspect order payload
-    console.log("Shopify Order Webhook Received:", body);
-
-    // Extract AddPipe-related attributes from Shopify order
-    const attributes = body.note_attributes || [];
-    const addpipeData: Record<string, string> = {};
-
-    attributes.forEach((attr: any) => {
-      if (attr.name.startsWith("addpipe_")) {
-        addpipeData[attr.name] = attr.value;
-      }
-    });
-
-    // Construct payload for AddPipe or your backend
-    const payload = {
-      order_id: body.id,
-      customer_email: body.email,
+    // Build a minimal payload/DB doc for the order
+    const orderDocBase = {
+      order_id: String(body.id ?? ""),
+      email: body.email ?? "",
       customer_name: `${body.customer?.first_name || ""} ${body.customer?.last_name || ""}`.trim(),
-      shipping_address: body.shipping_address,
-      addpipe: addpipeData,
-      line_items: body.line_items?.map((item: any) => ({
-        id: String(item.id),
-        name: item.name,
-        sku: item.sku,
-      })) || [],
+      shipping_address: body.shipping_address ?? null,
+      created_at: body.created_at ?? new Date().toISOString(),
+      raw_payload: body,
     };
 
-    console.log("Forwarding to AddPipe!:", payload);
+    // Parse every line_item and extract addpipe properties (supporting page-suffixed keys)
+    const lineItems = Array.isArray(body.line_items) ? body.line_items : [];
 
-    // Connect to MongoDB
+    const parsedLineItems = lineItems.map((li: any) => {
+      const props = propertiesArrayToMap(li.properties);
+      // find keys for video id / stream
+      const videoIdKey = Object.keys(props).find((k) => k.startsWith("addpipe_video_id") || k.startsWith("addpipe_video"));
+      const streamKey = Object.keys(props).find((k) => k.startsWith("addpipe_stream"));
+      const videoId = videoIdKey ? props[videoIdKey] : undefined;
+      const streamName = streamKey ? props[streamKey] : undefined;
+      return {
+        original: li,
+        props,
+        addpipe_video_id: videoId,
+        addpipe_stream: streamName,
+      };
+    });
+
+    console.log("Parsed line-items (with potential AddPipe data):", parsedLineItems.map((p: ParsedLineItem) => ({ id: p.original?.id, video: p.addpipe_video_id })));
+
+    // If there are no line-item addpipe entries, fallback to order-level note_attributes (legacy)
+    const orderNoteAttrs: Record<string, string> = {};
+    if ((!parsedLineItems.some((p: ParsedLineItem) => p.addpipe_video_id)) && Array.isArray(body.note_attributes)) {
+      (body.note_attributes || []).forEach((n: any) => {
+        if (n?.name && typeof n?.value !== "undefined") {
+          orderNoteAttrs[n.name] = String(n.value);
+        }
+      });
+      // if fallback exists, attach to the first line item
+      if (Object.keys(orderNoteAttrs).length > 0 && parsedLineItems.length > 0) {
+        console.warn("No line-item AddPipe data found; falling back to order-level note_attributes for first line item.");
+        parsedLineItems[0].props = { ...parsedLineItems[0].props, ...orderNoteAttrs };
+        parsedLineItems[0].addpipe_video_id = parsedLineItems[0].addpipe_video_id || orderNoteAttrs.addpipe_video_id || orderNoteAttrs.addpipe_video || orderNoteAttrs.addpipe_videoid;
+        parsedLineItems[0].addpipe_stream = parsedLineItems[0].addpipe_stream || orderNoteAttrs.addpipe_stream;
+      }
+    }
+
+    // connect to DB
     await connectDB();
 
-    // Save to DB
-    const existing = await ShopifyOrder.findOne({ order_id: payload.order_id });
+    // Save order base doc if not present
+    const existing = await ShopifyOrder.findOne({ order_id: orderDocBase.order_id });
     if (!existing) {
-        await ShopifyOrder.create({
-            ...payload,
-            order_id: String(payload.order_id),
-        });
-        console.log("Saved new order:", payload.order_id);
-        const videoRes = await fetch(`https://api.addpipe.com/video/${payload.addpipe.addpipe_video_id}`, {
-            headers: {
-            "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY!,
-            },
-        });
-  
-    if (!videoRes.ok) {
-        throw new Error(`Failed to fetch video info from AddPipe: ${videoRes.status}`);
-    }
-
-    const videoData = await videoRes.json();
-    let pipeS3Link: string = videoData?.videos?.[0]?.pipeS3Link;
-
-    if (!pipeS3Link) throw new Error("No pipeS3Link found in AddPipe response");
-
-    // Normalize link
-    if (pipeS3Link.startsWith("/")) {
-      pipeS3Link = `eu2-addpipe.s3.nl-ams.scw.cloud${pipeS3Link}`;
-    }
-    const fileUrl = `https://${pipeS3Link}`;
-    console.log("Downloading from:", fileUrl);
-
-    // 2. Download file with retry
-    const buffer = await downloadWithRetry(fileUrl);
-
-    // 3. Upload to S3
-    // const ext = "type" || "mp4";
-    const key = `audio/${payload.addpipe.addpipe_video_id}.mp4`;
-
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: process.env.AWS_BUCKET_NAME!,
-        Key: key,
-        Body: buffer,
-        ContentType: `video/mp4`,
-      })
-    );
-
-    console.log(`Uploaded to S3: ${key}`);
-
-    const uploadedfileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
-
-    const firstItem = payload.line_items[0];
-    const shippingAddress = payload.shipping_address;
-    
-    try {
-      const siteflowOrder = await createSiteflowOrder(
-        uploadedfileUrl,
-        shippingAddress,
-        firstItem
-      );
-    
-      if (siteflowOrder?._id) {
-        console.log("SiteFlow order created successfully:", siteflowOrder._id);
-        console.log("SiteFlow order URL:", siteflowOrder.url);
-    
-        // Optional: save order ID in your DB for tracking
-        await ShopifyOrder.updateOne(
-          { order_id: String(payload.order_id) },
-          { $set: { siteflow_order_id: siteflowOrder._id, siteflow_order_url: siteflowOrder.url } }
-        );
-      } else {
-        console.error("SiteFlow order creation failed — missing _id:", siteflowOrder);
-      }
-    
-    } catch (err) {
-      console.error("SiteFlow order creation error:", err);
-    }
-    
-    try {
-        // Save S3 URL + QR code into DB
-        const updateResult = await ShopifyOrder.updateOne(
-            { order_id: String(payload.order_id) },
-            { $set: { s3_url: uploadedfileUrl } }
-        );
-      
-        if (updateResult.modifiedCount > 0) {
-          console.log("QR code and S3 URL saved in DB");
-        } else if (updateResult.matchedCount > 0) {
-          console.warn("Order found but nothing was updated (possibly same data)");
-        } else {
-          console.error("No matching order found to update:", payload.order_id);
-        }
-    } catch (err) {
-        console.error("Failed to save QR code and S3 URL in DB:", err);
-    }
-
-    // 4. Delete video from AddPipe
-    try {
-      const deleteRes = await fetch(`https://api.addpipe.com/video/${payload.addpipe.addpipe_video_id}`, {
-        method: "DELETE",
-        headers: {
-          "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY || "",
-        },
-      });
-
-      if (!deleteRes.ok) {
-        console.warn(`Failed to delete video ${payload.addpipe.addpipe_video_id} from AddPipe`);
-      } else {
-        console.log(`Deleted video ${payload.addpipe.addpipe_video_id} from AddPipe`);
-      }
-    } catch (err) {
-      console.error("Error deleting video from AddPipe:", err);
-    }
-
+      await ShopifyOrder.create(orderDocBase);
+      console.log("Saved new ShopifyOrder document:", orderDocBase.order_id);
     } else {
-      console.log("Order already exists:", payload.order_id);
+      console.log("ShopifyOrder already exists in DB:", orderDocBase.order_id);
     }
 
-    return NextResponse.json({ success: true });
+    // Filter items that actually have addpipe_video_id
+    const itemsToProcess = parsedLineItems.filter((p: ParsedLineItem) => p.addpipe_video_id);
+
+    // If nothing to process, still respond OK
+    if (itemsToProcess.length === 0) {
+      console.log("No AddPipe video IDs found on any line item. Nothing to process.");
+      return NextResponse.json({ success: true, message: "No AddPipe items found" });
+    }
+
+    // Helper to process a single line item
+    async function processLineItemItem(p: any) {
+      const li = p.original;
+      const videoId = String(p.addpipe_video_id);
+      const streamName = p.addpipe_stream ?? null;
+
+      try {
+        // 1) Get AddPipe video info
+        const videoRes = await fetch(`https://api.addpipe.com/video/${videoId}`, {
+          headers: {
+            "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY || "",
+          },
+        });
+
+        if (!videoRes.ok) {
+          const txt = await videoRes.text().catch(() => "");
+          console.error(`Failed to fetch AddPipe video ${videoId}: ${videoRes.status} ${txt}`);
+          return { line_item_id: li.id, error: true, reason: "AddPipe fetch failed", status: videoRes.status };
+        }
+
+        const videoData = await videoRes.json();
+        let pipeS3Link: string | undefined = videoData?.videos?.[0]?.pipeS3Link;
+
+        if (!pipeS3Link) {
+          console.error("No pipeS3Link found in AddPipe response for", videoId, videoData);
+          return { line_item_id: li.id, error: true, reason: "no_pipeS3Link" };
+        }
+
+        if (pipeS3Link.startsWith("/")) {
+          pipeS3Link = `eu2-addpipe.s3.nl-ams.scw.cloud${pipeS3Link}`;
+        }
+        const fileUrl = `https://${pipeS3Link}`;
+        console.log(`LineItem ${li.id} - downloading from:`, fileUrl);
+
+        // 2) Download
+        const buffer = await downloadWithRetry(fileUrl);
+
+        // 3) Upload to your S3
+        const key = `audio/${videoId}.mp4`;
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: process.env.AWS_BUCKET_NAME!,
+            Key: key,
+            Body: buffer,
+            ContentType: `video/mp4`,
+          })
+        );
+
+        const uploadedfileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+        console.log(`LineItem ${li.id} - uploaded to S3: ${uploadedfileUrl}`);
+
+        // 4) Save into DB (push to files array)
+        await ShopifyOrder.updateOne(
+          { order_id: orderDocBase.order_id },
+          {
+            $push: {
+              files: {
+                line_item_id: String(li.id),
+                videoId,
+                streamName,
+                uploadedfileUrl,
+                created_at: new Date(),
+              },
+            },
+          }
+        );
+
+        // 5) Create SiteFlow order for this line item
+        let siteflowResult: any = null;
+        try {
+          siteflowResult = await createSiteflowOrder(
+            uploadedfileUrl,
+            body.shipping_address,
+            {
+              id: String(li.id),
+              name: li.name,
+              sku: li.sku,
+            }
+          );
+
+          // Save siteflow reference in DB
+          await ShopifyOrder.updateOne(
+            { order_id: orderDocBase.order_id },
+            {
+              $push: {
+                siteflow_orders: {
+                  line_item_id: String(li.id),
+                  siteflow_id: siteflowResult?._id ?? null,
+                  siteflow_url: siteflowResult?.url ?? null,
+                  created_at: new Date(),
+                },
+              },
+            }
+          );
+          console.log(`SiteFlow created for line item ${li.id}:`, siteflowResult?._id);
+        } catch (err) {
+          console.error(`SiteFlow creation failed for line item ${li.id}:`, err);
+        }
+
+        // 6) Attempt to delete AddPipe video (best-effort)
+        try {
+          const deleteRes = await fetch(`https://api.addpipe.com/video/${videoId}`, {
+            method: "DELETE",
+            headers: { "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY || "" },
+          });
+          if (!deleteRes.ok) {
+            console.warn(`Failed to delete AddPipe video ${videoId} - status ${deleteRes.status}`);
+          } else {
+            console.log(`Deleted AddPipe video ${videoId}`);
+          }
+        } catch (err) {
+          console.warn("Error deleting AddPipe video:", err);
+        }
+
+        return { line_item_id: li.id, success: true, videoId, uploadedfileUrl, siteflow: siteflowResult ?? null };
+      } catch (err) {
+        console.error("Unexpected error processing line item", li.id, err);
+        return { line_item_id: li.id, error: true, reason: (err as Error).message ?? err };
+      }
+    }
+
+    // Process all items concurrently (for small number of items this is fine)
+    const results = await Promise.all(itemsToProcess.map((p: ParsedLineItem) => processLineItemItem(p)));
+
+    console.log("All items processed:", results);
+
+    return NextResponse.json({ success: true, results });
   } catch (error) {
     console.error("Error handling Shopify webhook:", error);
     return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 });
