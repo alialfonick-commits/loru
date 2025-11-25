@@ -1,6 +1,4 @@
-// app/api/webhook (or wherever your route lives)
-// Replace the existing POST handler file with this content.
-
+// app/api/webhook/route.ts  (or wherever your route lives - adjust filename/path as needed)
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import ShopifyOrder from "@/models/ShopifyOrder";
@@ -175,17 +173,13 @@ function propertiesArrayToMap(propertiesArray: any[] = []) {
   const map: Record<string, string> = {};
   if (!Array.isArray(propertiesArray)) return map;
 
-  for (const p of propertiesArray) {
-    if (!p) continue;
-    // Shopify properties may be { name, value } or plain object key/value pairs
-    if (typeof p === "object" && ("name" in p || "key" in p)) {
-      const name = p.name ?? p.key;
-      const value = p.value ?? p.value;
-      if (name) map[String(name)] = String(value ?? "");
-      continue;
-    }
-    // fallback: if it's a 2-length array or other form, skip
-  }
+  propertiesArray.forEach((p: any) => {
+    if (!p) return;
+    // Shopify properties can be { name, value } or { first, last }
+    const name = p.name ?? p.first ?? Object.keys(p)[0];
+    const value = p.value ?? p.last ?? Object.values(p)[0];
+    if (name) map[String(name)] = String(value ?? "");
+  });
   return map;
 }
 
@@ -193,7 +187,14 @@ function propertiesArrayToMap(propertiesArray: any[] = []) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    console.log(body)
     console.log("Shopify Order Webhook Received:", body?.id ?? "(no id)");
+
+    // Basic env var checks
+    if (!process.env.ADDPIPE_API_KEY || !process.env.AWS_BUCKET_NAME || !process.env.AWS_REGION) {
+      console.error('Missing required env vars: ADDPIPE_API_KEY, AWS_BUCKET_NAME, or AWS_REGION');
+      return NextResponse.json({ success: false, error: 'server configuration error' }, { status: 500 });
+    }
 
     // Build a minimal payload/DB doc for the order
     const orderDocBase = {
@@ -205,29 +206,30 @@ export async function POST(req: NextRequest) {
       raw_payload: body,
     };
 
-    // Parse every line_item and extract addpipe properties (supporting page-suffixed keys)
-    const lineItems = Array.isArray(body.line_items) ? body.line_items : [];
+    // Parse line items, extracting video id + stream if present
+    const parsedLineItems: ParsedLineItem[] = (body.line_items || []).map((li: any) => {
+      const props = propertiesArrayToMap(li.properties || []);
 
-    const parsedLineItems = lineItems.map((li: any) => {
-      const props = propertiesArrayToMap(li.properties);
-      // find keys for video id / stream
-      const videoIdKey = Object.keys(props).find((k) => k.startsWith("addpipe_video_id") || k.startsWith("addpipe_video"));
-      const streamKey = Object.keys(props).find((k) => k.startsWith("addpipe_stream"));
-      const videoId = videoIdKey ? props[videoIdKey] : undefined;
+      const machineKey = Object.keys(props).find(k => k.toLowerCase().startsWith('addpipe_video_id'));
+      const friendlyKey = Object.keys(props).find(k => k.toLowerCase().startsWith('audio id'));
+      const streamKey = Object.keys(props).find(k => k.toLowerCase().startsWith('addpipe_stream'));
+
+      const videoId = machineKey ? props[machineKey] : (friendlyKey ? props[friendlyKey] : undefined);
       const streamName = streamKey ? props[streamKey] : undefined;
+
       return {
         original: li,
         props,
         addpipe_video_id: videoId,
-        addpipe_stream: streamName,
+        addpipe_stream: streamName
       };
     });
 
-    console.log("Parsed line-items (with potential AddPipe data):", parsedLineItems.map((p: ParsedLineItem) => ({ id: p.original?.id, video: p.addpipe_video_id })));
+    console.log("Parsed line-items (with potential AddPipe data):", parsedLineItems.map(p => ({ id: p.original?.id, video: p.addpipe_video_id })));
 
     // If there are no line-item addpipe entries, fallback to order-level note_attributes (legacy)
     const orderNoteAttrs: Record<string, string> = {};
-    if ((!parsedLineItems.some((p: ParsedLineItem) => p.addpipe_video_id)) && Array.isArray(body.note_attributes)) {
+    if ((!parsedLineItems.some((p) => p.addpipe_video_id)) && Array.isArray(body.note_attributes)) {
       (body.note_attributes || []).forEach((n: any) => {
         if (n?.name && typeof n?.value !== "undefined") {
           orderNoteAttrs[n.name] = String(n.value);
@@ -255,7 +257,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Filter items that actually have addpipe_video_id
-    const itemsToProcess = parsedLineItems.filter((p: ParsedLineItem) => p.addpipe_video_id);
+    const itemsToProcess = parsedLineItems.filter((p) => p.addpipe_video_id);
 
     // If nothing to process, still respond OK
     if (itemsToProcess.length === 0) {
@@ -264,14 +266,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Helper to process a single line item
-    async function processLineItemItem(p: any) {
+    async function processLineItemItem(p: ParsedLineItem) {
       const li = p.original;
+      if (!p.addpipe_video_id) {
+        return { line_item_id: li.id, skipped: true, reason: 'no_video_id' };
+      }
       const videoId = String(p.addpipe_video_id);
       const streamName = p.addpipe_stream ?? null;
 
       try {
         // 1) Get AddPipe video info
-        const videoRes = await fetch(`https://api.addpipe.com/video/${videoId}`, {
+        const videoRes = await fetch(`https://api.addpipe.com/video/${encodeURIComponent(videoId)}`, {
           headers: {
             "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY || "",
           },
@@ -284,7 +289,10 @@ export async function POST(req: NextRequest) {
         }
 
         const videoData = await videoRes.json();
-        let pipeS3Link: string | undefined = videoData?.videos?.[0]?.pipeS3Link;
+        // defensive lookup
+        let pipeS3Link: string | undefined = Array.isArray(videoData?.videos) && videoData.videos[0]?.pipeS3Link
+          ? videoData.videos[0].pipeS3Link
+          : undefined;
 
         if (!pipeS3Link) {
           console.error("No pipeS3Link found in AddPipe response for", videoId, videoData);
@@ -364,7 +372,7 @@ export async function POST(req: NextRequest) {
 
         // 6) Attempt to delete AddPipe video (best-effort)
         try {
-          const deleteRes = await fetch(`https://api.addpipe.com/video/${videoId}`, {
+          const deleteRes = await fetch(`https://api.addpipe.com/video/${encodeURIComponent(videoId)}`, {
             method: "DELETE",
             headers: { "X-PIPE-AUTH": process.env.ADDPIPE_API_KEY || "" },
           });
@@ -385,7 +393,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Process all items concurrently (for small number of items this is fine)
-    const results = await Promise.all(itemsToProcess.map((p: ParsedLineItem) => processLineItemItem(p)));
+    const results = await Promise.all(itemsToProcess.map((p) => processLineItemItem(p)));
 
     console.log("All items processed:", results);
 
