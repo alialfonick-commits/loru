@@ -39,7 +39,8 @@ interface ParsedLineItem {
 async function createSiteflowOrder(
   uploadedfileUrl: string,
   shippingAddress: ShippingAddress,
-  item: LineItemMinimal
+  item: LineItemMinimal,
+  sourceOrderId: string
 ) {
   const method = "POST";
   const path = "/api/order";
@@ -75,7 +76,7 @@ async function createSiteflowOrder(
   const body = {
     destination: { name: "pureprint" },
     orderData: {
-      sourceOrderId: `Keepr_${Date.now()}`,
+      sourceOrderId: sourceOrderId,
       items: [
         {
           sku: "keepr_hardback_210x210_staging",
@@ -266,7 +267,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Helper to process a single line item
-    async function processLineItemItem(p: ParsedLineItem) {
+    async function processLineItemItem(p: ParsedLineItem, idx: number, totalCount: number, shopifyOrderNumber: string) {
       const li = p.original;
       if (!p.addpipe_video_id) {
         return { line_item_id: li.id, skipped: true, reason: 'no_video_id' };
@@ -341,6 +342,10 @@ export async function POST(req: NextRequest) {
         // 5) Create SiteFlow order for this line item
         let siteflowResult: any = null;
         try {
+          // compute suffix: '' when only one item, otherwise '-A', '-B', '-C', ...
+          const suffix = totalCount > 1 ? `-${String.fromCharCode(65 + idx)}` : '';
+          const sourceOrderId = `Keepr_${shopifyOrderNumber}${suffix}`;
+
           siteflowResult = await createSiteflowOrder(
             uploadedfileUrl,
             body.shipping_address,
@@ -348,7 +353,8 @@ export async function POST(req: NextRequest) {
               id: String(li.id),
               name: li.name,
               sku: li.sku,
-            }
+            },
+            sourceOrderId // pass computed sourceOrderId
           );
 
           // Save siteflow reference in DB
@@ -393,7 +399,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Process all items concurrently (for small number of items this is fine)
-    const results = await Promise.all(itemsToProcess.map((p) => processLineItemItem(p)));
+    // compute base order number (prefer order_number)
+    const shopifyOrderNumber = body.order_number ?? (body.name ? String(body.name).replace('#', '') : String(body.id ?? 'unknown'));
+    const totalCount = itemsToProcess.length;
+
+    // process with index so we can add suffixes per item
+    const results = await Promise.all(
+      itemsToProcess.map((p, idx) => processLineItemItem(p, idx, totalCount, shopifyOrderNumber))
+    );
+
 
     console.log("All items processed:", results);
 
