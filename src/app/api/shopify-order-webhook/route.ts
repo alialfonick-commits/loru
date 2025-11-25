@@ -111,7 +111,7 @@ async function createSiteflowOrder(
       },
     };
   
-    const res = await fetch("https://orders.oneflow.io/api/order", {
+    const res = await fetch("https://orders.oneflow-test.io/api/order", {
       method: "POST",
       headers: {
         "x-oneflow-authorization": authHeader,
@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // Log or inspect order payload
-    // console.log("Shopify Order Webhook Received:", body.id);
+    console.log("Shopify Order Webhook Received:", body);
 
     // Extract AddPipe-related attributes from Shopify order
     const attributes = body.note_attributes || [];
