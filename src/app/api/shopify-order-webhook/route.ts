@@ -206,7 +206,7 @@ export async function POST(req: NextRequest) {
         // Optionally include a per-item suffix in sourceItemId if you want to track (A,B,C) locally:
         const suffix = uploadedItems.length > 1 ? `-${String.fromCharCode(65 + index)}` : "";
         return {
-          sku: "keepr_hardback_210x210",
+          sku: "keepr_hardback_210x210_staging",
           name: li.name || "Keepr Book",
           sourceItemId: `${String(li.id)}${suffix}`,
           quantity: 1,
