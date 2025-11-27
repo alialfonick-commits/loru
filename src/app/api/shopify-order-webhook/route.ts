@@ -206,6 +206,8 @@ export async function POST(req: NextRequest) {
         // Optionally include a per-item suffix in sourceItemId if you want to track (A,B,C) locally:
         const suffix = uploadedItems.length > 1 ? `-${String.fromCharCode(65 + index)}` : "";
         const qty = Math.max(1, Number(li.quantity ?? 1)); // <-- use Shopify quantity, default 1
+        console.log("item quantity ", qty)
+
         return {
           sku: "keepr_hardback_210x210_staging",
           name: li.name || "Keepr Book",
@@ -250,7 +252,7 @@ export async function POST(req: NextRequest) {
           ],
         },
       };
-      console.log("item body", body)
+      
       const res = await fetch("https://orders.oneflow-test.io/api/order", {
         method: "POST",
         headers: {
