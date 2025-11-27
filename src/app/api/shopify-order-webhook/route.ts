@@ -253,7 +253,7 @@ export async function POST(req: NextRequest) {
         },
       };
       
-      const res = await fetch("https://orders.oneflow-test.io/api/order", {
+      const res = await fetch("https://orders.oneflow.io/api/order", {
         method: "POST",
         headers: {
           "x-oneflow-authorization": authHeader,
