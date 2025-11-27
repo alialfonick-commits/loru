@@ -205,11 +205,12 @@ export async function POST(req: NextRequest) {
         const pdfs = pdfMap[li.name];
         // Optionally include a per-item suffix in sourceItemId if you want to track (A,B,C) locally:
         const suffix = uploadedItems.length > 1 ? `-${String.fromCharCode(65 + index)}` : "";
+        const qty = Math.max(1, Number(li.quantity ?? 1)); // <-- use Shopify quantity, default 1
         return {
-          sku: "keepr_hardback_210x210",
+          sku: "keepr_hardback_210x210_staging",
           name: li.name || "Keepr Book",
           sourceItemId: `${String(li.id)}${suffix}`,
-          quantity: 1,
+          quantity: qty,
           components: [
             {
               code: "cover",
