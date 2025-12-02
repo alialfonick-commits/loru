@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+audio-recorder.txt
+shopify-order-webhook-backup.ts
 
 # next.js
 /.next/
