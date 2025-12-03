@@ -2,9 +2,39 @@
 import Image from "next/image";
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error || "Login failed");
+      } else {
+        // login succeeded — cookie set by server. Redirect.
+        router.push("/dashboard");
+      }
+    } catch (err) {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="logHero relative min-h-screen grid place-items-center bg-linear-to-b from-[#5935a4] to-[#f5d6d2] p-4">
@@ -20,17 +50,19 @@ export default function Home() {
           Welcome to Keeper Dashboard
         </h1> */}
 
-        <form className="grid gap-4 [&_label]:text-md [&_label]:font-medium [&_label]:text-[#222]">
+        <form className="grid gap-4 [&_label]:text-md [&_label]:font-medium [&_label]:text-[#222]" onSubmit={handleSubmit}>
           {/* Email Field */}
           <div className="grid gap-2">
             <label htmlFor="email">
               Email
             </label>
-            <input
-              type="email"
+            <input 
+              className="w-full rounded-lg border border-gray-200 sm:px-4 px-2 sm:py-2.5 py-2 text-sm text-[#222] placeholder-[#3a3a3a] focus:outline-none focus:ring focus:ring-[#ea2c8f] transition"
+              value={email} 
               id="email"
               placeholder="johndoe@gmail.com"
-              className="w-full rounded-lg border border-gray-200 sm:px-4 px-2 sm:py-2.5 py-2 text-sm text-[#222] placeholder-[#3a3a3a] focus:outline-none focus:ring focus:ring-[#ea2c8f] transition"
+              onChange={e => setEmail(e.target.value)} type="email" 
+              required
             />
           </div>
 
@@ -41,10 +73,12 @@ export default function Home() {
             </label>
             <div className="relative">
               <input
+                className="w-full rounded-lg border border-gray-200 sm:px-4 px-2 sm:py-2.5 py-2 text-sm text-[#222] placeholder-[#3a3a3a] focus:outline-none focus:ring focus:ring-[#ea2c8f] transition"
                 type={showPassword ? "text" : "password"}
                 id="password"
                 placeholder="********************"
-                className="w-full rounded-lg border border-gray-200 sm:px-4 px-2 sm:py-2.5 py-2 text-sm text-[#222] placeholder-[#3a3a3a] focus:outline-none focus:ring focus:ring-[#ea2c8f] transition"
+                value={password} 
+                onChange={e => setPassword(e.target.value)}
               />
               <button
                 type="button"
@@ -59,10 +93,12 @@ export default function Home() {
           {/* Log In Button */}
           <button
             type="submit"
+            disabled={loading}
             className="mt-2 bg-[#ea2c8f] cursor-pointer hover:bg-[#6844ab] text-white text-md font-semibold sm:py-2.5 py-2 rounded-lg transition flex items-center justify-center gap-1"
           >
-            Login <span className="text-lg">→</span>
+            {loading ? "Signing in..." : "Sign in"} <span className="text-lg">→</span>
           </button>
+          {error && <p style={{ color: "red", marginTop: 12 }}>{error}</p>}
         </form>
       </div>
     </div>
