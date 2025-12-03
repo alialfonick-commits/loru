@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
         console.log("item quantity ", qty)
 
         return {
-          sku: "keepr_hardback_210x210",
+          sku: "keepr_hardback_210x210_staging",
           name: li.name || "Keepr Book",
           sourceItemId: `${String(li.id)}${suffix}`,
           quantity: qty,
