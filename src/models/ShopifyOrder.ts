@@ -42,7 +42,7 @@ export interface IShopifyOrder extends Document {
 }
 
 const ShopifyOrderSchema = new Schema<IShopifyOrder>({
-  _id: { type: String, required: false },
+  //_id: { type: String, required: false },
 
   order_id: { type: String, required: false }, // no longer required or unique
 
@@ -88,7 +88,7 @@ const ShopifyOrderSchema = new Schema<IShopifyOrder>({
   qrcode: { type: String, required: false },
 
   sourceAccountId: { type: String, required: false },
-  sourceOrderId: { type: String, required: false },
+  sourceOrderId: { type: String, required: false, unique: true, sparse: true }, // siteflow id,
   order_status: { type: String, required: false },
   status_history: [{ status: String, received_at: Date, payload: Schema.Types.Mixed }],
   siteflow_url: { type: String, required: false },
