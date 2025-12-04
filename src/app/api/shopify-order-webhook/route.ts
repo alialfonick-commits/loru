@@ -513,9 +513,9 @@ export async function POST(req: NextRequest) {
         }));
 
         const docToCreate: any = {
-          _id: String(siteflowId), // use SiteFlow id as the Mongo _id
+          order_id: `Keepr_${shopifyOrderNumber}`, // use SiteFlow id as the Mongo _id
           sourceAccountId: sourceAccountId,
-          sourceOrderId: `Keepr_${shopifyOrderNumber}`,
+          sourceOrderId:  String(siteflowId),
           order_status: "created", // initial state, will be updated by SiteFlow webhook
           lineitems: lineitemsForDb,
           files: filesBuffer,
