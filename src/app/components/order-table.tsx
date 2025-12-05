@@ -7,7 +7,7 @@ export default function OrdersTable() {
 
   return (
     <div className="rounded-xl border border-gray-200 shadow-[0px_0px_12px_1px_#d8d9d3] overflow-hidden">
-      <h2 className="text-xl font-semibold pb-4 pt-4 px-6 border-b border-gray-300">Recent Orders</h2>
+      <h2 className="text-xl font-semibold pb-4 pt-4 px-4 border-b border-gray-300">Recent Orders</h2>
 
       <table className="w-full border-collapse text-sm [&_th]:text-left [&_th]:px-4 [&_th]:py-3 [&_th]:text-gray-600">
         <thead className="bg-gray-50 border-b border-gray-300">

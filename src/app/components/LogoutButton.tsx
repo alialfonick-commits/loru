@@ -1,5 +1,5 @@
 "use client";
-
+import { IoMdPower } from "react-icons/io";
 export default function LogoutButton() {
   const logout = async () => {
     await fetch("/api/logout", {
@@ -11,9 +11,9 @@ export default function LogoutButton() {
   return (
     <button
       onClick={logout}
-      className="px-4 py-2 bg-red-600 text-white rounded"
+      className="px-2 py-2 bg-[#222] cursor-pointer text-white rounded-4xl"
     >
-      Logout
+    <IoMdPower />
     </button>
   );
 }

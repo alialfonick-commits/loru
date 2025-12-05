@@ -98,7 +98,7 @@ export default function Home() {
           >
             {loading ? "Signing in..." : "Sign in"} <span className="text-lg">→</span>
           </button>
-          {error && <p style={{ color: "red", marginTop: 12 }}>{error}</p>}
+          {error && <p style={{ color: "#ea2c8f", marginTop: -10, fontSize: 14, textAlign: "center"}}>{error}</p>}
         </form>
       </div>
     </div>
