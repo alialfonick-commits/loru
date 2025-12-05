@@ -1,6 +1,6 @@
 // components/order-table.tsx
 "use client";
-
+import { IoIosArrowDown, IoIosArrowUp } from "react-icons/io";
 import React, { useState } from "react";
 
 export type LineItemForUI = {
@@ -31,7 +31,7 @@ export default function OrdersTable({ orders }: { orders: OrderWithItems[] }) {
     <div className="rounded-xl border border-gray-200 shadow-[0px_0px_12px_1px_#d8d9d3] overflow-hidden">
       <h2 className="text-xl font-semibold pb-4 pt-4 px-4 border-b border-gray-300">Recent Orders</h2>
 
-      <table className="w-full border-collapse text-sm [&_th]:text-left [&_th]:px-4 [&_th]:py-3 [&_th]:text-gray-600">
+      <table className="w-full border-collapse text-sm [&_th]:text-left [&_th]:px-4 [&_th]:py-3 [&_th]:text-gray-600 max-[600px]:overflow-x-auto max-[600px]:inline-block">
         <thead className="bg-gray-50 border-b border-gray-300">
           <tr>
             <th></th>
@@ -52,6 +52,8 @@ export default function OrdersTable({ orders }: { orders: OrderWithItems[] }) {
             [&_td]:px-4 [&_td]:py-3
             [&_tr:last-child]:border-b-0
             [&_tr:nth-child(even)]:bg-gray-50
+            max-md:[&_tr]:text-[13px]
+            max-md:[&_td]:p-2.5
           "
         >
           {orders.map((order) => {
@@ -59,13 +61,13 @@ export default function OrdersTable({ orders }: { orders: OrderWithItems[] }) {
             return (
               <React.Fragment key={order.id}>
                 <tr>
-                  <td className="w-12">
+                  <td className="xl:w-6 w-2">
                     <button
                       onClick={() => toggle(order.id)}
                       aria-label={isOpen ? "Collapse" : "Expand"}
-                      className="p-1 rounded hover:bg-gray-100"
+                      className="p-1 cursor-pointer text-base rounded hover:bg-gray-100"
                     >
-                      {isOpen ? "▾" : "▸"}
+                      {isOpen ? <IoIosArrowUp /> : <IoIosArrowDown />}
                     </button>
                   </td>
 

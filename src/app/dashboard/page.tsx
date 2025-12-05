@@ -101,11 +101,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="bg-linear-to-b from-indigo-50 to-gray-100
-    grid md:grid-cols-[18rem_1fr] grid-cols-1 md:gap-10">
+    grid lg:grid-cols-[18rem_1fr] grid-cols-1 lg:gap-10">
       <Sidebar />
       <div className="flex flex-col h-screen">
         <Header />
-        <main className="md:px-8 px-4 py-6">
+        <main className="lg:px-8 px-4 py-6">
           <OrdersTable orders={orders} />
         </main>
       </div>

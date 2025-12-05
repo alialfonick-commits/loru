@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { GoSidebarCollapse } from "react-icons/go";
+import { IoMdClose } from "react-icons/io";
 
 export default function Dashboard() {
   const [open, setOpen] = useState(false);
@@ -13,9 +14,9 @@ export default function Dashboard() {
       {/* MENU BUTTON (visible under 768px) */}
       <button
         onClick={() => setOpen(true)}
-        className="md:hidden fixed top-[18px] left-4 z-20"
+        className="lg:hidden fixed top-[18px] left-4 z-20"
       >
-        <GoSidebarCollapse  className="text-4xl" />
+        <GoSidebarCollapse  className="text-3xl" />
       </button>
 
       {/* ASIDE SIDEBAR (your exact markup) */}
@@ -25,15 +26,15 @@ export default function Dashboard() {
           border-r border-[#5835a48c] p-6
           fixed top-0 left-0 z-40
           transition-transform duration-300 ease-in-out
-          ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+          ${open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
         {/* CLOSE BUTTON for mobile */}
         <button
           onClick={() => setOpen(false)}
-          className="md:hidden absolute top-4 right-4 text-white text-3xl"
+          className="lg:hidden absolute cursor-pointer p-[3px] rounded-lg top-2 right-2.5 text-white w-fit h-fit border border-white text-lg"
         >
-          ×
+          <IoMdClose />
         </button>
 
         <Image
